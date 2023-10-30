@@ -1,0 +1,291 @@
+---
+title: "Pricing Strategy for MG Motors' 'Aura' Sedan"
+author: "Sen Feng, Tre Vasiliadis, Jack Sonne"
+date: "October 23, 2023"
+output: pdf_document
+---
+
+```{r, echo = FALSE, results = FALSE, message = FALSE}
+# Load necessary packages.
+rm(list=ls())
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+```
+
+# Summary
+
+MG Motors aims to capitalize on the sedan market gap left by competitors like Ford by swiftly introducing a gasoline-based sedan named 'Aura'. Time constraints preclude the development of hybrid or electric options, necessitating a focused approach. The challenge is to determine the optimal price for Aura, factoring in R&D costs, manufacturing retooling, and potential competition from GG Motors' 'Asta'. With a tight timeline and impending regulatory changes, a meticulous financial and market analysis, bolstered by Monte-Carlo simulation in R, is underway. This comprehensive approach aims to provide a well-informed pricing strategy for Aura, with the recommended optimal price set at $27,900.
+
+\pagebreak
+\newpage
+
+# 1. Introduction
+
+## 1.1 Background
+MG Motors, a prominent player of the evolving automotive industry, stands at a pivotal juncture as it ventures to seize a unique opening in the sedan market. Ford alongside many other large players in the automotive industry are remodeling their sedans to become either hybrid or electric to appeal to eco-conscious consumers. The Chief Product Officer of MG Motors has set forth a mission to swiftly introduce a gasoline-based sedan model named 'Aura' to cater to this new market vacancy. 
+
+## 1.2 Timeline
+The urgency of the situation leaves no room for exploring hybrid or electric options. The Research and Development (R&D) department is poised to dedicate six intensive months to develop a production-ready car model that adheres to rigorous quality standards. Concurrently, the manufacturing plant will undergo an extensive six-month retooling process to prepare for the production and assembly of Aura. Through these two actions, the earliest launch date for MG Motors' Aura is projected to be at the outset of 2025.
+
+## 1.3 Financials
+To execute this plan within the timeline, the R&D department anticipates incurring a cost of $5 million due to the shift of engineers and the consequent delay in their ongoing projects. The cost for the needed retooling in their manufacturing plant will be approximately &dollar;5 million. The production cost per unit of Aura will fall somewhere within the range of &dollar;15,000 to &dollar;20,000. Furthermore, the competitive landscape introduces another layer of complexity, as MG Motors' rival, GG Motors, is preparing to introduce a similar product named 'Asta.' Although the exact pricing of Asta remains undisclosed, there is an anticipation of two possible price points being &dollar;22,000 which has a 30% chance or &dollar;27,000 with a stronger 70% likelihood. This means MG Motors will not only have to price Aura competitively but also anticipate the market's response to different price points.
+
+## 1.4 Actions
+In this report, an optimal pricing point for MG Motors to use for Aura will be determined via a Monte-Carlo simulation accounting for the uncertainties of this scenario. The methodology as well as the results will be thoroughly explained and all assumptions will be made clear.
+
+
+```{r, results = 'asis', echo= FALSE, warning = FALSE, message = FALSE}
+# Define constants
+
+# Set seed for reproducibility
+set.seed(1234)
+
+total_simulations <- 10000
+
+cost_of_delay <- 5e6   # Estimate the cost of delay on other project is $5 million
+fixed_cost <- 5e6      # Fixed cost of retooling the manufacturing plant is approximately $5 million
+cost_price <- runif(total_simulations, 15000, 20000)     # Cost price of producing one car lie between $15,000 to $20,000
+market_price_asta <- sample(c(22000, 27000), total_simulations, replace = TRUE, prob = c(0.3, 0.7)) # Simulate market price of Asta
+
+discount_rate <- 0.1
+
+```
+
+# 2. Model
+
+## 2.1 Methods
+In order to optimize the price point for Aura, we chose to leverage a Monte Carlo simulation approach to find the optimal price point that maximizes the Net Present Value of the six year project. The model uses an annual discount rate of 10% and runs 10,000 simulations to combat the uncertainty of the simulation. It first considers potential prices for the competitor's product, Asta, by incorporating associated probabilities of 30% for a &dollar;22,000 price point and 70% for &dollar;27,000. 
+
+The simulation loop subsequently explores a range of prices for Aura from &dollar;21,000 to $40,000, and for each point within this range it conducts a series of random simulations to estimate profits, taking into account variables such as demand randomness, production costs, and discount factors. The ultimate aim is to pinpoint the price that yields the highest NPV rather than profit. Lastly, the model visualizes the relationship between prices and their respective NPVs on a scatter plot, with a focus on identifying the optimal price point providing a data driven recommendation to MG Motors.
+
+## 2.2 Assumptions
+The model assumes that production starts on January 1, 2025, and runs until the end of 2030, completing a full 6 full years. The cost of producing each car is a random value between 15,000-20,000 and constant between each year. Demand is to be split between Asta & Aura in an inverse proportion to the prices of the cars. The price ranges used in the simulation loop for Aura have a low of &dollar;21,000 (assuming the cost of production could be &dollar;20,000 and MG Motors wouldn’t produce a product with any smaller profitability) and a high of &dollar;40,000 (assuming MG Motors intends not to deviate too far beyond Asta’s price).
+
+
+```{r, results = 'asis', echo= FALSE, warning = FALSE, message = FALSE}
+# A function for the annual volume
+annual_volume <- function(price) {
+                    epsilon <- runif(1, min = -1, max = 1) # the random error
+                    demand <- 10 - 3 * price / 10000 + epsilon
+                    return(max(0, demand))
+                  }
+
+# Function to calculate discounted cash flow
+calculate_dcf <- function(revenue, discount_rate, year) {
+                    dcf <- revenue / (1 + discount_rate)^year
+                    return(dcf)
+                  }
+
+# Initialize a list to store the results
+results <- list()
+
+# Run a separate simulation for each possible price of Aura
+for (price_aura in seq(21000, 40000, by = 100)) {
+  # Run the simulation
+  for (i in 1:total_simulations) {
+    total_volume <- 1000*annual_volume((market_price_asta[i] + price_aura)/2)   # Price is the average market price of Asta and Aura.
+    volume_aura <- total_volume * market_price_asta[i] / (market_price_asta[i] + price_aura)
+    revenue <- volume_aura * price_aura
+    cost <- volume_aura * cost_price[i]
+    profit <- revenue - cost
+    total_profit = 0 # Total profit in 5 years
+    
+    # Calculate the net present value for each year
+    for (year in 2025:2030) {
+      discount_factor <- 1 / ((1 + discount_rate) ^ (year - 2025))
+      DCF_aura = profit * discount_factor
+      total_profit = total_profit + DCF_aura
+    }
+    
+    total_profit_after_fixed_costs = total_profit - fixed_cost - cost_of_delay
+    
+    results[[length(results) + 1]] <- data.frame(
+        Price_Aura = price_aura,
+        Pure_Profit= total_profit_after_fixed_costs,
+        # Ignore the following to speed up simulation
+        Price_Asta = market_price_asta[i],
+        total_volume=total_volume,
+        Volume_Aura=volume_aura,
+        revenue=revenue,
+        cost=cost,
+        total_profit=total_profit
+    )
+    
+  }
+}
+
+# Combine all the results into a single data frame
+results <- do.call(rbind, results)
+
+```
+
+# 3. Analysis
+
+After conducting a Monte-Carlo simulation with 10,000 iterations, we calculated the mean profit for each potential price point of the 'Aura' sedan. The optimal price that maximizes the mean profit was determined to be approximately $27,900 USD.
+
+## 3.1 Price-Value Relationship
+The scatter plot below illustrates the relationship between the price of the 'Aura' sedan and its Net Present Value (NPV) over a six-year period from 2025 to 2030. The dashed green vertical line indicates the optimal price point, which corresponds to the highest NPV. This optimal price is annotated in red text. This  provides a clear recommendation for the pricing strategy of MG Motors' 'Aura' sedan, aiming to maximize profitability while accounting for production costs, market competition, and other relevant factors.
+
+
+```{r, results = 'asis', echo= FALSE, warning = FALSE, message = FALSE, out.width="50%", fig.align='center'}
+
+# Calculate the mean profit for each price
+mean_profits <- aggregate(Pure_Profit ~ Price_Aura, data = results, FUN = mean)
+
+# Find the price that gives the maximum mean profit
+optimal_price <- mean_profits$Price_Aura[which.max(mean_profits$Pure_Profit)]
+
+# Create the plot
+ggplot(mean_profits, aes(x = Price_Aura, y = Pure_Profit)) +
+  geom_point() + # Scatter plot
+  scale_x_continuous(labels = scales::label_number_si(scale = 0.001, suffix = "k"), name = "Price for Aura (in USD)") + # Format x-axis
+  scale_y_continuous(labels = scales::comma_format(scale = 0.000001), name = "Net Present Value for 6 years (in millions USD)") +   
+  labs(title = "Figure 1: Average Projected Net Present Value (NPV) over Time (2025-2030)") +
+  theme_minimal() + 
+  geom_vline(xintercept = optimal_price, linetype = "dashed", color = "green", size = 1) + # Add vertical line
+  geom_text(aes(x = optimal_price, y = max(Pure_Profit), label = paste("Optimal Price\n", optimal_price/1000, "k")), 
+            vjust = 2.5, color = "red", size = 4) + # Add text annotation 
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+
+```
+
+When examining the relationship between price and Net Present Value (NPV), a clear trend emerges. At lower price points, between &dollar;15,000 and &dollar;19,000, the NPV is notably negative. This indicates that pricing the 'Aura' sedan in this range would result in an unsustainable financial outcome. 
+
+As the price increases towards the optimal point of &dollar;27,900, the NPV experiences a sharp ascent, reaching its peak. This suggests that pricing the 'Aura' sedan at approximately &dollar;27,900 maximizes the potential profitability. 
+
+Beyond this point, however, we observe a gradual decline in NPV. This phenomenon is indicative of the diminishing returns associated with excessively high prices. It is essential to note that our assumption of demand splitting in inverse proportion to the prices of the cars plays a pivotal role in these projections. This highlights the importance of a balanced pricing strategy that strikes a harmonious equilibrium between profitability and market demand.
+
+
+## 3.2 NPV Distribution at Optimal Price (Discount Rate: 10%)
+To further understand the financial implications of our pricing strategy for MG Motors' 'Aura' sedan, we examined the distribution of Net Present Value (NPV) at the optimal price point of $27,900 USD. Assuming a discount rate of 10% per annum, we calculated the present worth of future cash flows, providing a clearer picture of the project's profitability over a six-year period. The resulting boxplot visualizes this distribution, illustrating the range, median, and potential outliers in NPV values across the years from 2025 to 2030. This analysis allows us to better assess the financial stability and potential return on investment associated with the 'Aura' sedan.
+
+
+```{r, results = 'asis', echo= FALSE, warning = FALSE, message = FALSE, out.width="50%", fig.align='center'}
+
+# Calculate mean and SD for Pure_Profit, total_volume, and Volume_Aura
+mean_profit <- mean(results$Pure_Profit)
+sd_profit <- sd(results$Pure_Profit)
+
+mean_total_volume <- mean(results$total_volume)
+sd_total_volume <- sd(results$total_volume)
+
+mean_volume_aura <- mean(results$Volume_Aura)
+sd_volume_aura <- sd(results$Volume_Aura)
+
+mean_dcf_by_price <- detailed_results %>%
+  filter(Price_Aura == 27500) %>%
+  group_by(Price_Aura, Year) %>%
+  summarize(mean_DCF_Aura = mean(DCF_Aura, na.rm = TRUE))
+
+# Filter the data for Price_Aura equal to 27500
+filtered_data <- detailed_results %>%
+  filter(Price_Aura == 27500)
+
+# Create a boxplot
+ggplot(filtered_data, aes(x = as.factor(Year), y = DCF_Aura)) +
+  geom_boxplot() +
+  labs(title = "Figure 2: Distribution of Net Present Value (NPV) at Optimal Price Point",
+       x = "Year",
+       y = "Net Present Value (in millions)") +
+  ylim(min(filtered_data$DCF_Aura), max(filtered_data$DCF_Aura)) + # Set y-axis limits
+  scale_y_continuous(labels = scales::comma_format(scale = 1e-6, suffix = "M")) +  # Format y-axis labels
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title 
+  
+
+```
+
+As observed in the plot, the median NPV for each year steadily decreases, indicating an expected reduction in revenue over time. Specifically, we anticipate a decrease of approximately $0.7 million annually, aligning with the discounting effect.  It's important to note that these projections are contingent on the price remaining constant.
+
+## 3.3 Projection of Net Present Value (NPV)
+In this section, we explore the long-term financial outlook of MG Motors' 'Aura' sedan under specific assumptions. We maintain a steady price point of $27,900, reflecting the optimal pricing strategy identified earlier. Additionally, we operate under the assumption that there are no imminent regulatory changes that would restrict the sale of gasoline-based cars beyond 2030. By applying a linear regression model to the projected NPV values, we aim to provide insights into the expected trend in Net Present Value over the years, from 2025 to 2040. 
+
+
+```{r, results = 'asis', echo= FALSE, warning = FALSE, message = FALSE, out.width="50%", fig.align='center'}
+
+# Fit a linear regression model
+model <- lm(mean_DCF_Aura ~ Year, data = mean_dcf_by_price)
+
+slope <- coef(model)[2]  # Get the slope coefficient
+intercept <- coef(model)[1]  # Get the intercept
+
+expected_year <- -intercept / slope
+
+# Generate a sequence of years from 2025 to 2040
+years <- seq(2025, 2040, by = 1)
+
+# Calculate mean profit based on the linear model
+mean_profit <- slope * years + intercept
+
+# Create a data frame for plotting
+df <- data.frame(Year = years, Mean_Profit = mean_profit)
+
+
+# Create the plot
+ggplot(df, aes(x = Year, y = Mean_Profit)) +
+  geom_line(aes(color = "Projected NPV"), size = 1) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed", aes(color = "Break-even Point")) +
+  geom_point(x = 2038, y = df$Mean_Profit[df$Year == 2038], shape = 16, size = 4, fill = "green", color = "green", aes(color = "Break-even Year")) +
+  geom_text(aes(x = 2038, y = df$Mean_Profit[df$Year == 2038] + 0.7e6, label = as.character(2038), color = "green")) +
+  scale_color_manual(name = "Legend", values = c("Projected NPV" = "blue", "Break-even Point" = "red", "Break-even Year" = "green")) +
+  labs(title = "Figure 3: Long-term Financial Outlook of' 'Aura'",
+       x = "Year",
+       y = "Net Present Value (Millions)") +
+  scale_y_continuous(labels = scales::comma_format(scale = 1e-6, suffix = "M")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = c(0.85, 0.8))  # Adjust the position of the legend
+
+
+```
+
+Under the assumption of a 10% discount rate per annum, the linear regression model reveals a clear downward trajectory in NPV. This aligns with our expectations, as the present value of future cash flows diminishes over time. Notably, the graph indicates that, at this discount rate, we can anticipate the NPV to approach zero around the year 2038. This signifies a critical turning point in the project's financial outlook, suggesting that by this year, the present value of cash flows matches the initial investment and operating costs. 
+
+
+# 4. Results
+
+In this section, we present a summary of the key findings from our Monte-Carlo simulations for different price ranges of Aura. The analysis focused on evaluating the demand for Aura, as well as the associated net present value (NPV), considering various scenarios.
+
+```{r,  echo= FALSE, warning = FALSE, message = FALSE, fig.pos="H"}
+# Define the breaks for Price_Aura
+breaks <- seq(15000, 40000, length.out = 6)
+
+# Define labels for the buckets based on the range
+bucket_labels <- paste0(breaks[-length(breaks)]/1000, "k - ", breaks[-1]/1000, "k")
+
+# Group Price_Aura into buckets and add labels
+detailed_results$Price_Range <- cut(detailed_results$Price_Aura, breaks = breaks, include.lowest = TRUE, labels = bucket_labels)
+
+# Calculate summary statistics for each bucket and each year
+summary_stats <- detailed_results %>%
+  group_by(Price_Range) %>%
+  summarize(
+    Mean_Demand_Aura = mean(Demand_Aura),
+    Mean_Demand_Asta = mean(Demand_Asta),
+    Mean_NPV_Aura = mean(DCF_Aura),
+    Median_NPV_Aura = median(DCF_Aura)
+  )
+
+# Generate the simple summary table
+summary_table <- summary_stats %>%
+  select(-Bold_Row)
+
+# Display the table
+kable(summary_table)
+
+```
+
+These results provide valuable insights into the expected demand and net present value for different price ranges of Aura. It is crucial to note that the recommended price of $27,900 falls within the range where Aura demonstrates strong market potential and positive DCF, making it a strategically sound choice.
+
+
+# 5. Conclusions
+In conclusion, our model's result solidifies a strategic roadmap for MG Motors as they prepare to introduce the 'Aura' sedan to the market. After a rigorous analysis and Monte-Carlo simulation, we recommend pricing MG Motors' 'Aura' sedan at approximately $27,900 USD. This price point maximizes Net Present Value (NPV) over six years, considering production costs, market competition, and demand variability.
+
+Lower prices yield negative NPV, indicating unsustainability. Going beyond $27,900 sees diminishing returns. The distribution at the optimal price confirms stability. Looking ahead, the NPV is expected to decrease over time, reaching a critical point around 2038. This balance between initial investment and operating costs signals a turning point.
+
+In summary, $27,900 USD positions 'Aura' competitively, ensuring financial viability. MG Motors should swiftly implement this strategy to seize the identified market opportunity.
+
+
